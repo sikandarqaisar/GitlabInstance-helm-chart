@@ -1,0 +1,75 @@
+{{- if .Values.statefulset.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+{{- else }}
+apiVersion: apps/v1
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ .Values.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  replicas: {{ .Values.replicas }}
+  serviceName: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
+    spec:
+      initContainers:
+      - args:
+        - s3
+        - sync
+        - s3://sikandar-terraform-state-storage/gitlabData
+        - /nexus-data/s3Backup
+        image: {{ .Values.InitImage }}
+        name: {{ .Values.initName }}
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 2Gi
+        volumeMounts:
+        - mountPath: {{ .Values.mountPath }} 
+          name: {{ .Values.mountName }}
+      containers:
+      - name: {{ .Values.containerName }}
+        image: {{ .Values.containerImage }}
+        ports:
+        - containerPort: 80
+        lifecycle:
+         postStart:
+           exec:
+              command: ["bin/bash", "-c", " sleep 60;  cd /var/opt/gitlab/backups; cp /nexus-data/s3Backup/* . ;  chown git:git /var/opt/gitlab/backups/* ; gitlab-rake gitlab:backup:restore force=yes ;"]
+        volumeMounts:
+        - mountPath: {{ .Values.mountPath }} 
+          name: {{ .Values.mountName }} 
+      volumes:
+        - name: {{ .Values.mountName }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.mountName }}
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ .Values.mountName }}
+        labels:
+          app: {{ .Values.name }}
+          fullname: release-name-sonatype-nexus
+          chart: sonatype-nexus-1.19.0
+          release: release-name
+          heritage: Tiller
+        annotations:
+          iam.amazonaws.com/role: arn:aws:iam::853219876644:role/AWSEKSNodeRole-default-GS
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "15Gi"
+        storageClassName: "standard"
+

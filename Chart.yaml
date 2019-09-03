@@ -1,0 +1,9 @@
+apiVersion: v1
+appVersion: "1.0"
+description: A Helm chart for Kubernetes
+name: myChart
+version: 0.1.0
+sources:
+- ~/.kube/myChart/templates/deployment.yaml
+- ~/.kube/myChart/templates/service.yaml
+- ~/.kube/myChart/templates/stirageClass.yaml

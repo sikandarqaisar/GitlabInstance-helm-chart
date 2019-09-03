@@ -1,0 +1,11 @@
+kind: StatefulSet
+name: nginx
+InitImage: 853219876644.dkr.ecr.us-east-2.amazonaws.com/sikandar-repo:latest
+initName: test
+mountPath: /nexus-data
+mountName: nexus-data
+containerName: gitlab
+containerImage: store/gitlab/gitlab-ce:11.10.4-ce.0
+statefulset:
+  enabled: true
+replicas: 1
