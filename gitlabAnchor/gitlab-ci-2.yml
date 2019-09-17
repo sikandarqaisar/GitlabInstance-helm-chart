@@ -1,0 +1,156 @@
+variables:
+  REGION: us-east-1
+  CLUSTER_NAME: rebag-stage
+
+
+before_script:
+  - sudo apt-get update -qy
+  - sudo apt-get install curl jq python python-pip -qy
+  - pip install awscli
+  - chmod +x ./pipelines/verifyTunnel.sh
+  - chmod +x ./pipelines/deploy.sh
+  - chmod +x ./pipelines/snapShot.sh
+
+stages:
+  - build
+  - migrate-database
+  - backend-test
+  - deploy-application
+  - end-end-test
+  - create-snapshot
+
+build:
+  stage: build
+  script:
+    - echo "Starting build image"
+    - echo $(whoami)
+#    - echo "$DKR_PASS" | docker login --username $DKR_USER --password-stdin https://$DKR_RGST
+    - $(aws ecr get-login --no-include-email --region us-east-1)
+    - echo "Building image..."
+    - curl -s 'https://s3.amazonaws.com/rebag-assets/GeoIP2-City.mmdb.tar.gz' -o /tmp/GeoIP2-City.tar.gz
+    - tar zxf /tmp/GeoIP2-City.tar.gz -C dev_assets/ 'GeoIP2-City.mmdb'
+    - git submodule init
+    - git submodule update
+    - docker build -t $CI_REGISTRY_IMAGE:latest .
+    - echo "Tagging image..."
+    - docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - echo "Pushing image..."
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY_IMAGE
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  only:
+    - nclouds-pipeline
+    - Ci-CD-Pipeline-master
+  tags:
+    - docker
+
+start_staging:
+  stage: migrate-database
+  script:
+    - source ./pipelines/deploy.sh -s django -t django -c 1024 -m 2048 -x YES
+    - source ./pipelines/verifyTunnel.sh -c $CLUSTER_NAME -d django -n django -m "run-once-migrate"
+  environment:
+    name: Stagging
+  only:
+    - nclouds-pipeline
+  tags:
+    - docker
+  when: manual
+
+start_production:
+  stage: migrate-database
+  script:
+    - ./pipelines/deploy.sh -s django -t django -c 1024 -m 2048 -x YES
+    - ./pipelines/verifyTunnel.sh -c $CLUSTER_NAME -d django -n django -m "run-once-migrate"
+  environment:
+    name: Production
+  only:
+    - Ci-CD-Pipeline-master
+  tags:
+    - docker
+  when: manual
+
+backendtest_staging:
+  stage: backend-test
+  script:
+    - echo "Backend test run successfully"
+  environment:
+    name: Stagging
+  only:
+    - nclouds-pipeline
+  when: manual
+
+backendtest_production:
+  stage: backend-test
+  script:
+    - echo "Backend test run successfully"
+  environment:
+    name: Production
+  only:
+    - Ci-CD-Pipeline-master
+  when: manual
+
+django_staging:
+  stage: deploy-application
+  script:
+    - ./pipelines/deploy.sh -s django -t django -c 1024 -m 2048 -x NO
+  environment:
+    name: Stagging
+  only:
+    - nclouds-pipeline
+  when: manual
+
+django_production:
+  stage: deploy-application
+  script:
+    - ./pipelines/deploy.sh -s django -t django -c 1024 -m 2048 -x NO
+  environment:
+    name: Production
+  only:
+    - Ci-CD-Pipeline-master
+  when: manual
+
+execute_staging:
+  stage: end-end-test
+  script:
+    - curl -X POST -F token=304f0482234a34450b366faf51b347 -F "ref=master" -F "variables[REBAG_DOMAIN]=stage-1657344011.us-east-1.elb.amazonaws.com" https://gitlab.com/api/v4/projects/8344300/trigger/pipeline
+  environment:
+    name: Stagging
+  only:
+    - nclouds-pipeline
+  when: manual
+
+execute_production:
+  stage: end-end-test
+  script:
+    - curl -X POST -F token=304f0482234a34450b366faf51b347 -F "ref=master" -F "variables[REBAG_DOMAIN]=stage-1657344011.us-east-1.elb.amazonaws.com" https://gitlab.com/api/v4/projects/8344300/trigger/pipeline
+  environment:
+    name: Production
+  only:
+    - Ci-CD-Pipeline-master
+  when: manual
+
+
+snapshot_staging:
+  stage: create-snapshot
+  script:
+    - ./pipelines/snapShot.sh snap-$CI_COMMIT_SHORT_SHA
+  environment:
+    name: Stagging
+  only:
+    - nclouds-pipeline
+  tags:
+    - docker
+  when: manual
+
+snapshot_production:
+  stage: create-snapshot
+  script: 
+    - ./pipelines/snapShot.sh snap-$CI_COMMIT_SHORT_SHA
+  environment:
+    name: Production
+  only:
+    - Ci-CD-Pipeline-master
+  tags:
+    - docker
+  when: manual

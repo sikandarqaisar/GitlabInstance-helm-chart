@@ -1,0 +1,32 @@
+
+stages:
+  - build
+  - migrate-database
+  - backend-test
+  - deploy-application
+  - end-end-test
+  - create-snapshot
+
+.frontend_template: &frontend_template
+  stage: build
+  script:
+  - echo "hello"
+  - echo Test
+
+
+development_frontend:
+  <<: *frontend_template
+  stage: build
+  variables:
+    ENVIRONMENT: development
+  only:
+  - master
+
+production_frontend: 
+  <<: *frontend_template
+  stage: build
+  variables:
+    ENVIRONMENT: "production"
+  only:
+  - production
+
